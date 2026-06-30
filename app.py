@@ -1,13 +1,25 @@
 import pickle
+import os
+import gdown
 import streamlit as st
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-# ---------------- API KEY ---------------- #
-# safe fallback so it doesn't crash
 API_KEY = "8935f4abb2ac21f7798ac858092add50"
+
+# ---------------- Download similarity.pkl if not present ---------------- #
+SIMILARITY_FILE = "similarity.pkl"
+GDRIVE_FILE_ID = "1V0TA7fdNtKmwBaMg_ZHIK3xYl3PPDu9I"
+
+if not os.path.exists(SIMILARITY_FILE):
+    with st.spinner("Downloading model files..."):
+        gdown.download(
+            f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}",
+            SIMILARITY_FILE,
+            quiet=False
+        )
 
 
 # ---------------- SESSION WITH RETRIES ---------------- #
