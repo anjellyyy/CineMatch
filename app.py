@@ -1,6 +1,7 @@
 import pickle
 import streamlit as st
 import requests
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -34,12 +35,12 @@ def fetch_poster(movie_id):
         return None
 
 
-# ---------------- Load Files ---------------- #
+# ---------------- Load Data ---------------- #
 movies = pickle.load(open("movies.pkl", "rb"))
 
-# ❌ REMOVED similarity.pkl (this was breaking deployment)
+# ❌ REMOVED: similarity.pkl (this was breaking deployment)
 
-# ---------------- Build similarity again (SAFE VERSION) ---------------- #
+# ---------------- Build ML model inside app ---------------- #
 cv = CountVectorizer(max_features=5000, stop_words='english')
 vectors = cv.fit_transform(movies['tags'].values.astype(str)).toarray()
 similarity = cosine_similarity(vectors)
@@ -98,6 +99,7 @@ st.markdown("""
         font-weight: 700 !important;
         margin-top: 8px !important;
     }
+
     [data-testid="stButton"] > button:hover {
         background-color: #b20710 !important;
     }
