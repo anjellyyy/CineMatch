@@ -1,22 +1,17 @@
 import pickle
-import os
-import gdown
 import streamlit as st
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import os
+import urllib.request
 
+# ---------------- API KEY ---------------- #
+# safe fallback so it doesn't crash
 API_KEY = "8935f4abb2ac21f7798ac858092add50"
 
-# ---------------- Download similarity.pkl if not present ---------------- #
-SIMILARITY_FILE = "similarity.pkl"
-GDRIVE_FILE_ID = "1V0TA7fdNtKmwBaMg_ZHIK3xYl3PPDu9I"
 
-if not os.path.exists(SIMILARITY_FILE):
-    with st.spinner("Downloading model files..."):
-        url = f"https://drive.google.com/uc?export=download&id={GDRIVE_FILE_ID}&confirm=t"
-        gdown.download(url, SIMILARITY_FILE, quiet=False)
 # ---------------- SESSION WITH RETRIES ---------------- #
 def get_session():
     session = requests.Session()
@@ -50,12 +45,19 @@ def fetch_poster(movie_id):
         print(f"Poster error: {e}")
         return None
 
-
 # ---------------- LOAD DATA ---------------- #
+
 movies = pickle.load(open("movies.pkl", "rb"))
 
-# IMPORTANT: similarity should exist (either loaded or computed elsewhere)
-similarity = pickle.load(open("similarity.pkl", "rb"))
+SIMILARITY_FILE = "similarity.pkl"
+
+HF_URL = "https://huggingface.co/datasets/anjellyy/cinematch/resolve/main/similarity.pkl"
+
+if not os.path.exists(SIMILARITY_FILE):
+    with st.spinner("Downloading recommendation model (first launch only)..."):
+        urllib.request.urlretrieve(HF_URL, SIMILARITY_FILE)
+
+similarity = pickle.load(open(SIMILARITY_FILE, "rb"))
 
 
 # ---------------- RECOMMEND FUNCTION ---------------- #
