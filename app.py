@@ -5,10 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-# ---------------- CONFIG ---------------- #
-API_KEY = st.secrets.get("TMDB_API_KEY", "YOUR_API_KEY_HERE")
+# ---------------- API KEY ---------------- #
+# safe fallback so it doesn't crash
+API_KEY = "8935f4abb2ac21f7798ac858092add50"
 
-# ---------------- SESSION (with retries) ---------------- #
+
+# ---------------- SESSION WITH RETRIES ---------------- #
 def get_session():
     session = requests.Session()
     retry = Retry(
@@ -22,6 +24,7 @@ def get_session():
     return session
 
 SESSION = get_session()
+
 
 # ---------------- FETCH POSTER ---------------- #
 def fetch_poster(movie_id):
@@ -37,174 +40,171 @@ def fetch_poster(movie_id):
         return None
 
     except Exception as e:
-        print(f"Poster fetch error for {movie_id}: {e}")
+        print(f"Poster error: {e}")
         return None
 
 
 # ---------------- LOAD DATA ---------------- #
 movies = pickle.load(open("movies.pkl", "rb"))
 
-# If you have similarity.pkl, load it. Otherwise fallback mode works.
-try:
-    similarity = pickle.load(open("similarity.pkl", "rb"))
-except Exception:
-    similarity = None
+# IMPORTANT: similarity should exist (either loaded or computed elsewhere)
+similarity = pickle.load(open("similarity.pkl", "rb"))
 
 
-# ---------------- RECOMMENDER ---------------- #
+# ---------------- RECOMMEND FUNCTION ---------------- #
 def recommend(movie):
-    try:
-        movie_index = movies[movies["title"] == movie].index[0]
+    movie_index = movies[movies["title"] == movie].index[0]
 
-        # -------- FALLBACK MODE -------- #
-        if similarity is None:
-            sample = movies.sample(5)
+    distances = similarity[movie_index]
 
-            ids_and_names = list(zip(sample["movie_id"], sample["title"]))
+    movies_list = sorted(
+        list(enumerate(distances)),
+        reverse=True,
+        key=lambda x: x[1]
+    )[1:6]
 
-        # -------- ML MODE -------- #
-        else:
-            distances = similarity[movie_index]
+    recommended_movies = []
+    recommended_posters = []
 
-            movies_list = sorted(
-                list(enumerate(distances)),
-                reverse=True,
-                key=lambda x: x[1]
-            )[1:6]
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for i in movies_list:
+            movie_id = movies.iloc[i[0]].movie_id
+            recommended_movies.append(movies.iloc[i[0]].title)
 
-            ids_and_names = [
-                (movies.iloc[i[0]].movie_id, movies.iloc[i[0]].title)
-                for i in movies_list
-            ]
+            recommended_posters.append(fetch_poster(movie_id))
 
-        # Fetch posters in parallel
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            posters = list(executor.map(lambda x: fetch_poster(x[0]), ids_and_names))
-
-        names = [x[1] for x in ids_and_names]
-
-        return names, posters
-
-    except Exception as e:
-        st.error("⚠️ Recommendation system error. Try another movie.")
-        print(e)
-        return [], []
+    return recommended_movies, recommended_posters
 
 
-# ---------------- UI CONFIG ---------------- #
+# ---------------- STREAMLIT UI ---------------- #
+
 st.set_page_config(page_title="CineMatch", page_icon="🎬", layout="wide")
 
-# ---------------- CSS ---------------- #
 st.markdown("""
 <style>
 
-body, .main {
+/* ---------------- APP ---------------- */
+
+.stApp{
     background:#141414 !important;
 }
 
-/* global text */
-p, span, label {
+[data-testid="stAppViewContainer"],
+[data-testid="stHeader"],
+.main,
+.block-container{
+    background:#141414 !important;
+}
+
+section,main{
+    background:#141414 !important;
+}
+
+/* ---------------- TEXT ---------------- */
+
+*{
     color:white !important;
 }
 
-/* app background */
-[data-testid="stAppViewContainer"],
-[data-testid="stHeader"],
-.block-container {
-    background:#141414 !important;
-}
+/* ---------------- SELECT BOX ---------------- */
 
-/* select box */
-[data-testid="stSelectbox"] > div > div {
+[data-testid="stSelectbox"] > div > div{
     background:#222 !important;
     border:1px solid #444 !important;
     border-radius:10px !important;
     color:white !important;
 }
 
-/* dropdown */
-div[data-baseweb="popover"] {
+/* Dropdown */
+
+div[data-baseweb="popover"]{
     background:#1b1b1b !important;
     border:1px solid #333 !important;
 }
 
-/* options */
-div[data-baseweb="popover"] li {
+div[data-baseweb="popover"] ul{
+    background:#1b1b1b !important;
+}
+
+div[data-baseweb="popover"] li{
     background:#1b1b1b !important;
     color:white !important;
 }
 
-div[data-baseweb="popover"] li:hover {
+div[data-baseweb="popover"] li:hover{
     background:#E50914 !important;
 }
 
-/* button */
-[data-testid="stButton"] > button {
+div[data-baseweb="popover"] li[aria-selected="true"]{
+    background:#B20710 !important;
+}
+
+/* ---------------- BUTTON ---------------- */
+
+.stButton>button{
     background:#E50914 !important;
     color:white !important;
     border:none !important;
     border-radius:8px !important;
-    font-weight:700 !important;
+    font-weight:bold !important;
 }
 
-[data-testid="stButton"] > button:hover {
+.stButton>button:hover{
     background:#B20710 !important;
-    transform:scale(1.03);
 }
 
-/* images */
-[data-testid="stImage"] img {
+/* ---------------- POSTERS ---------------- */
+
+[data-testid="stImage"] img{
     border-radius:12px;
-    transition:0.25s;
+    transition:.25s;
 }
 
-[data-testid="stImage"] img:hover {
-    transform:scale(1.03);
+[data-testid="stImage"] img:hover{
+    transform:scale(1.05);
+    box-shadow:0 0 18px rgba(229,9,20,.5);
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- HEADER ---------------- #
+# ---------- HEADER ----------
+
 st.markdown("""
-<div style="text-align:center; padding-bottom:1rem;">
-    <h1 style="font-size:3.2rem; font-weight:900;">🎬 CineMatch</h1>
-    <p style="color:#aaa;">Find movies similar to what you love 🍿</p>
+<div style="text-align:center; padding-bottom:20px;">
+    <h1 style="font-size:60px; font-weight:900;">
+        🎬 CineMatch
+    </h1>
+    <p style="color:#bbbbbb;">
+        Find movies similar to what you love 🍿
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
-st.divider()
+selected_movie = st.selectbox(
+    "🔍 Choose a movie",
+    movies["title"].values
+)
 
-# ---------------- INPUT ---------------- #
-selected_movie = st.selectbox("🔍 Choose a movie", movies["title"].values)
-
-# ---------------- BUTTON ---------------- #
 if st.button("Get Recommendations"):
 
-    with st.spinner("Finding movies you'll love..."):
+    with st.spinner("Finding movies you'll love... 🍿"):
+
         names, posters = recommend(selected_movie)
 
-    st.markdown("### ✨ Recommended For You")
+    st.markdown("## ✨ Recommended For You")
 
-    # safe loop (prevents index crash)
-    max_items = min(5, len(names), len(posters))
-    cols = st.columns(5, gap="medium")
+    cols = st.columns(5)
 
-    for i in range(max_items):
+    for i in range(5):
         with cols[i]:
 
             if posters[i]:
-                st.image(posters[i], use_container_width=True)
+                st.image(posters[i], width="stretch")
             else:
-                st.markdown("""
-                <div style="background:#2a2a2a; border-radius:10px;
-                height:280px; display:flex; align-items:center;
-                justify-content:center; color:#888;">
-                🎞️ No Poster Available
-                </div>
-                """, unsafe_allow_html=True)
+                st.write("No Poster")
 
             st.markdown(
-                f"<p style='text-align:center; font-weight:600'>{names[i]}</p>",
+                f"<center><b>{names[i]}</b></center>",
                 unsafe_allow_html=True
             )
