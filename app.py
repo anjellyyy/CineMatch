@@ -16,11 +16,11 @@ GDRIVE_FILE_ID = "1V0TA7fdNtKmwBaMg_ZHIK3xYl3PPDu9I"
 if not os.path.exists(SIMILARITY_FILE):
     with st.spinner("Downloading model files..."):
         gdown.download(
-            f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}",
+            f"https://drive.google.com/file/d/{GDRIVE_FILE_ID}/view?usp=sharing",
             SIMILARITY_FILE,
-            quiet=False
+            quiet=False,
+            fuzzy=True
         )
-
 
 # ---------------- SESSION WITH RETRIES ---------------- #
 def get_session():
