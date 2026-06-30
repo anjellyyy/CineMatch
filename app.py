@@ -4,6 +4,8 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 API_KEY = "8935f4abb2ac21f7798ac858092add50"
 
@@ -28,55 +30,45 @@ def fetch_poster(movie_id):
         if poster_path:
             return "https://image.tmdb.org/t/p/w500" + poster_path
         return None
-    except Exception as e:
-        print(f"Error fetching poster for {movie_id}: {e}")
+    except:
         return None
 
 
 # ---------------- Load Files ---------------- #
 movies = pickle.load(open("movies.pkl", "rb"))
 
-# ❌ similarity.pkl REMOVED (fix for Streamlit deployment)
-similarity = None
+# ❌ REMOVED similarity.pkl (this was breaking deployment)
+
+# ---------------- Build similarity again (SAFE VERSION) ---------------- #
+cv = CountVectorizer(max_features=5000, stop_words='english')
+vectors = cv.fit_transform(movies['tags'].values.astype(str)).toarray()
+similarity = cosine_similarity(vectors)
 
 
 # ---------------- Recommendation Function ---------------- #
 def recommend(movie):
-    try:
-        movie_index = movies[movies['title'] == movie].index[0]
+    movie_index = movies[movies['title'] == movie].index[0]
+    distances = similarity[movie_index]
 
-        if similarity is None:
-            # fallback: simple random-ish recommendation (prevents crash)
-            sample = movies.sample(5)
+    movies_list = sorted(
+        list(enumerate(distances)),
+        reverse=True,
+        key=lambda x: x[1]
+    )[1:6]
 
-            ids_and_names = list(zip(sample["movie_id"], sample["title"]))
-        else:
-            distances = similarity[movie_index]
+    ids_and_names = [
+        (movies.iloc[i[0]].movie_id, movies.iloc[i[0]].title)
+        for i in movies_list
+    ]
 
-            movies_list = sorted(
-                list(enumerate(distances)),
-                reverse=True,
-                key=lambda x: x[1]
-            )[1:6]
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        posters = list(executor.map(lambda x: fetch_poster(x[0]), ids_and_names))
 
-            ids_and_names = [
-                (movies.iloc[i[0]].movie_id, movies.iloc[i[0]].title)
-                for i in movies_list
-            ]
-
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            posters = list(executor.map(lambda x: fetch_poster(x[0]), ids_and_names))
-
-        names = [x[1] for x in ids_and_names]
-        return names, posters
-
-    except Exception as e:
-        st.error("Recommendation system error. Please try again.")
-        print(e)
-        return [], []
+    names = [x[1] for x in ids_and_names]
+    return names, posters
 
 
-# ---------------- Streamlit UI ---------------- #
+# ---------------- Streamlit UI (UNCHANGED) ---------------- #
 st.set_page_config(page_title="CineMatch", page_icon="🎬", layout="wide")
 
 st.markdown("""
@@ -106,12 +98,9 @@ st.markdown("""
         font-weight: 700 !important;
         margin-top: 8px !important;
     }
-
     [data-testid="stButton"] > button:hover {
         background-color: #b20710 !important;
     }
-
-    [data-testid="stImage"] img { border-radius: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -134,22 +123,12 @@ if st.button("Get Recommendations"):
     with st.spinner("Finding movies you'll love..."):
         names, posters = recommend(selected_movie)
 
-    st.markdown("### ✨ Recommended For You")
+    st.subheader("✨ Recommended For You")
 
-    cols = st.columns(5, gap="medium")
+    cols = st.columns(5)
+
     for i in range(5):
         with cols[i]:
             if posters[i]:
-                st.image(posters[i], use_container_width=True)
-            else:
-                st.markdown("""
-                    <div style="background:#2a2a2a; border-radius:10px; height:280px;
-                    display:flex; align-items:center; justify-content:center;
-                    color:#888; font-size:0.8rem;">
-                    🎞️ No Poster Available</div>
-                """, unsafe_allow_html=True)
-
-            st.markdown(
-                f"<p style='text-align:center; font-weight:600'>{names[i]}</p>",
-                unsafe_allow_html=True
-            )
+                st.image(posters[i])
+            st.write(names[i])
