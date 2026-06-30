@@ -5,8 +5,8 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import CountVectorizer
 
 API_KEY = "8935f4abb2ac21f7798ac858092add50"
 
@@ -31,101 +31,82 @@ def fetch_poster(movie_id):
         if poster_path:
             return "https://image.tmdb.org/t/p/w500" + poster_path
         return None
-    except:
+    except Exception:
         return None
 
 
 # ---------------- Load Data ---------------- #
 movies = pickle.load(open("movies.pkl", "rb"))
 
-# ❌ REMOVED: similarity.pkl (this was breaking deployment)
+# ---------------- Build similarity ON THE FLY ---------------- #
+# (NO similarity.pkl needed anymore)
 
-# ---------------- Build ML model inside app ---------------- #
 cv = CountVectorizer(max_features=5000, stop_words='english')
+
+# If your dataset uses 'tags' column (common in your notebook)
 vectors = cv.fit_transform(movies['tags'].values.astype(str)).toarray()
+
 similarity = cosine_similarity(vectors)
 
 
 # ---------------- Recommendation Function ---------------- #
 def recommend(movie):
-    movie_index = movies[movies['title'] == movie].index[0]
-    distances = similarity[movie_index]
+    try:
+        movie_index = movies[movies['title'] == movie].index[0]
 
-    movies_list = sorted(
-        list(enumerate(distances)),
-        reverse=True,
-        key=lambda x: x[1]
-    )[1:6]
+        distances = similarity[movie_index]
 
-    ids_and_names = [
-        (movies.iloc[i[0]].movie_id, movies.iloc[i[0]].title)
-        for i in movies_list
-    ]
+        movies_list = sorted(
+            list(enumerate(distances)),
+            reverse=True,
+            key=lambda x: x[1]
+        )[1:6]
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        posters = list(executor.map(lambda x: fetch_poster(x[0]), ids_and_names))
+        ids_and_names = [
+            (movies.iloc[i[0]].movie_id, movies.iloc[i[0]].title)
+            for i in movies_list
+        ]
 
-    names = [x[1] for x in ids_and_names]
-    return names, posters
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            posters = list(executor.map(lambda x: fetch_poster(x[0]), ids_and_names))
+
+        names = [x[1] for x in ids_and_names]
+        return names, posters
+
+    except Exception as e:
+        st.error("Recommendation error")
+        return [], []
 
 
-# ---------------- Streamlit UI (UNCHANGED) ---------------- #
+# ---------------- UI ---------------- #
 st.set_page_config(page_title="CineMatch", page_icon="🎬", layout="wide")
 
 st.markdown("""
     <style>
-    [data-testid="stAppViewContainer"],
-    [data-testid="stHeader"],
-    .block-container, .main {
-        background-color: #141414 !important;
-    }
-    section, main { background-color: #141414 !important; }
-    *, *::before, *::after { color: #ffffff !important; }
-    h1 { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
-
-    [data-testid="stSelectbox"] > div > div {
-        background-color: #2a2a2a !important;
-        border: 1px solid #555 !important;
-        border-radius: 8px !important;
-    }
-
+    [data-testid="stAppViewContainer"] { background-color: #141414; }
+    *, h1, p { color: white !important; }
     [data-testid="stButton"] > button {
-        background-color: #e50914 !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 10px 30px !important;
-        font-size: 1rem !important;
-        font-weight: 700 !important;
-        margin-top: 8px !important;
+        background-color: #e50914;
+        color: white;
+        border-radius: 8px;
+        padding: 10px 30px;
+        font-weight: bold;
     }
-
     [data-testid="stButton"] > button:hover {
-        background-color: #b20710 !important;
+        background-color: #b20710;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-    <div style="text-align:center; padding: 0 0 0.5rem 0; margin-top: -3rem;">
-        <h1 style="font-size:3.5rem; font-weight:900; letter-spacing:3px; margin-bottom:0;">
-        🎬 CineMatch
-        </h1>
-        <p style="color:#aaaaaa; font-size:1.1rem; margin-top:0.3rem;">
-        Find movies similar to what you love 🍿
-        </p>
-    </div>
-""", unsafe_allow_html=True)
+st.title("🎬 CineMatch")
 
-st.divider()
-
-selected_movie = st.selectbox("🔍 Choose a movie", movies["title"].values)
+selected_movie = st.selectbox("Choose a movie", movies["title"].values)
 
 if st.button("Get Recommendations"):
-    with st.spinner("Finding movies you'll love..."):
+    with st.spinner("Finding movies..."):
         names, posters = recommend(selected_movie)
 
-    st.subheader("✨ Recommended For You")
+    st.subheader("Recommended Movies")
 
     cols = st.columns(5)
 
