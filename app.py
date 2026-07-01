@@ -7,12 +7,10 @@ from urllib3.util.retry import Retry
 import os
 import urllib.request
 
-# ---------------- API KEY ---------------- #
-# safe fallback so it doesn't crash
-API_KEY = "8935f4abb2ac21f7798ac858092add50"
+API_KEY = st.secrets["TMDB_API_KEY"]
 
 
-# ---------------- SESSION WITH RETRIES ---------------- #
+
 def get_session():
     session = requests.Session()
     retry = Retry(
@@ -28,7 +26,7 @@ def get_session():
 SESSION = get_session()
 
 
-# ---------------- FETCH POSTER ---------------- #
+
 def fetch_poster(movie_id):
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=en-US"
@@ -45,7 +43,7 @@ def fetch_poster(movie_id):
         print(f"Poster error: {e}")
         return None
 
-# ---------------- LOAD DATA ---------------- #
+
 
 movies = pickle.load(open("movies.pkl", "rb"))
 
@@ -60,7 +58,6 @@ if not os.path.exists(SIMILARITY_FILE):
 similarity = pickle.load(open(SIMILARITY_FILE, "rb"))
 
 
-# ---------------- RECOMMEND FUNCTION ---------------- #
 def recommend(movie):
     movie_index = movies[movies["title"] == movie].index[0]
 
